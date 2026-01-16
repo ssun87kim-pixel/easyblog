@@ -13,6 +13,7 @@ export interface TargetPersona {
 }
 
 export interface GeneratedPost {
+    titles: string[];
     content: string;
     imageGuide: string;
 }
@@ -111,15 +112,19 @@ export async function generatePost(productInfo: ProductInfo, target: TargetPerso
     - 감성적인: 부드럽고 따뜻한 표현, 경험과 느낌, 브랜드 가치 강조
     - 친근한: 일상적인 표현, 친구에게 이야기하듯 편안한 문체, 이모지 적극 활용
     
-    또한, 포스팅의 시각적 매력을 높이기 위해 포함해야 할 구체적인 사진이나 시각적 요소 5가지를 제안하는 "이미지 가이드"를 포함해 주세요.
+    **이미지 삽입**: 블로그 본문 중간중간에 사진이 들어가야 할 적절한 위치에 [IMAGE: 이미지에 대한 구체적인 설명] 형식의 프롬프트를 넣어서 글을 작성해 주세요. 총 3~4개의 이미지를 적절하게 배치해 주세요.
+    
+    **제목 제안**: 해당 타겟과 톤에 어울리는 매력적인 블로그 제목 3개를 제안해 주세요. (리스트의 첫 번째 제목이 가장 추천하는 BEST 제목이어야 합니다.)
     
     응답은 오직 아래 필드를 가진 JSON 객체 형식으로만 보내주세요:
-    - content: 블로그 포스트 전체 텍스트 (마크다운 지원)
-    - imageGuide: 이미지 추천 목록 텍스트
+    - titles: 추천 제목 3개가 들어있는 배열 (첫 번째 요소가 Best)
+    - content: [IMAGE: ...] 형식을 포함한 블로그 포스트 전체 텍스트 (마크다운 지원)
+    - imageGuide: 별도의 추천 이미지 목록 (요약본)
     
     형식 예시:
     {
-      "content": "...",
+      "titles": ["첫 번째 추천 제목 (BEST)", "두 번째 제목", "세 번째 제목"],
+      "content": "제목... \\n\\n [IMAGE: 책상 앞에 앉아있는 사람] \\n\\n 내용...",
       "imageGuide": "..."
     }
   `;
@@ -134,9 +139,11 @@ export async function generatePost(productInfo: ProductInfo, target: TargetPerso
     } catch (error) {
         console.error("OpenRouter Post Generation Error:", error);
         return {
+            titles: ["글 생성 중 오류가 발생했습니다.", "오류 제목 2", "오류 제목 3"],
             content: "죄송합니다. 글 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
             imageGuide: "이미지 가이드를 불러올 수 없습니다.",
         };
     }
 }
+
 

@@ -145,7 +145,7 @@ export default function MainLayout() {
                 </span>
               </div>
               <p className="text-sm text-slate-300">
-                대리점 운영자를 위한 프리미엄 AI 블로그 포스팅 생성기
+                DESKER MATE 블로그 타파! easy blog
               </p>
             </div>
           </div>
@@ -211,8 +211,6 @@ export default function MainLayout() {
             <ResultPreview
               productName={productInfo.name}
               generatedPost={generatedPost}
-              activeTab={activeTab}
-              onTabChange={setActiveTab}
               onCopy={(success) =>
                 showToast(
                   success ? "클립보드에 복사했어요." : "복사에 실패했어요.",
@@ -220,6 +218,7 @@ export default function MainLayout() {
                 )
               }
             />
+
           </motion.section>
         </main>
 
