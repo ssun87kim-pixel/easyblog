@@ -1,0 +1,142 @@
+export interface ProductInfo {
+    name: string;
+    link: string;
+    description: string;
+}
+
+export interface TargetPersona {
+    id: string;
+    title: string;
+    description: string;
+    icon: string;
+    recommendedTone: string;
+}
+
+export interface GeneratedPost {
+    content: string;
+    imageGuide: string;
+}
+
+async function callOpenRouter(prompt: string) {
+    const apiKey = process.env.NEXT_PUBLIC_OPENROUTER_API_KEY || "";
+
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "HTTP-Referer": "http://localhost:3000",
+            "X-Title": "EasyBlog",
+        },
+        body: JSON.stringify({
+            "model": "google/gemini-2.0-flash-001",
+            "messages": [
+                {
+                    "role": "user",
+                    "content": prompt
+                }
+            ]
+        })
+    });
+
+    if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error?.message || "OpenRouter API request failed");
+    }
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+}
+
+export async function generateTargets(productInfo: ProductInfo): Promise<TargetPersona[]> {
+    const prompt = `
+    다음 상품 정보를 분석하여 블로그 포스팅을 읽을 만한 타겟 고객 페르소나 4개를 제안해 주세요.
+    결과는 반드시 **한국어**로 작성해 주세요.
+    
+    상품명: ${productInfo.name}
+    상품 링크: ${productInfo.link}
+    상품 설명: ${productInfo.description}
+    
+    각 페르소나에 대해 가장 적합한 블로그 톤(전문적인, 감성적인, 친근한 중 하나)을 추천해 주세요.
+    
+    응답은 오직 아래와 같은 JSON 배열 형식으로만 보내주세요.
+    - id: 고유 문자열 (1, 2, 3, 4)
+    - title: 타겟 페르소나를 나타내는 짧고 매력적인 제목
+    - description: 이 페르소나가 왜 이 상품에 관심을 가질지에 대한 간단한 설명
+    - icon: 관련 있는 이모지 하나
+    - recommendedTone: '전문적인', '감성적인', '친근한' 중 해당 타겟에게 가장 잘 어울리는 톤 하나만 선택
+    
+    형식 예시:
+    [
+      {"id": "1", "title": "...", "description": "...", "icon": "...", "recommendedTone": "전문적인"}
+    ]
+  `;
+
+    try {
+        const text = await callOpenRouter(prompt);
+        const jsonMatch = text.match(/\[[\s\S]*\]/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error("Failed to parse JSON from OpenRouter response");
+    } catch (error) {
+        console.error("OpenRouter Target Generation Error:", error);
+        return [
+            { id: "1", title: "실속파 고객", description: "가격과 성능을 중시하는 고객", icon: "💰", recommendedTone: "친근한" },
+            { id: "2", title: "트렌드 세터", description: "최신 유행에 민감한 고객", icon: "✨", recommendedTone: "감성적인" },
+            { id: "3", title: "전문가 그룹", description: "성능과 기능을 중시하는 고객", icon: "🛠️", recommendedTone: "전문적인" },
+            { id: "4", title: "선물 구매자", description: "주변 분들께 선물할 제품을 찾는 고객", icon: "🎁", recommendedTone: "친근한" },
+        ];
+    }
+}
+
+export async function generatePost(productInfo: ProductInfo, target: TargetPersona, tone: string): Promise<GeneratedPost> {
+    const prompt = `
+    다음 상품과 타겟 페르소나를 위한 전문적이고 매력적인 블로그 포스팅을 작성해 주세요.
+    모든 내용은 반드시 **한국어**로 성의 있게 작성해 주세요.
+    
+    상품명: ${productInfo.name}
+    상품 링크: ${productInfo.link}
+    상품 설명: ${productInfo.description}
+    타겟 페르소나: ${target.title} (${target.description})
+    설정된 말투/톤: ${tone}
+    
+    블로그 포스트는 반드시 HSO (Hook, Story, Offer) 구조를 따라야 합니다:
+    1. Hook: 독자의 주의를 끌 수 있는 매력적인 도입부.
+    2. Story: 상품의 가치와 페르소나의 문제를 해결하는 방법 설명.
+    3. Offer: 상품 상세 정보와 함께 행동 유도(Call to Action).
+    
+    **중요**: 포스팅의 전체적인 말투와 분위기는 반드시 '${tone}' 톤을 유지해야 합니다.
+    - 전문적인: 논리적이고 신뢰감 있는 표현, 객관적인 데이터나 성능 강조
+    - 감성적인: 부드럽고 따뜻한 표현, 경험과 느낌, 브랜드 가치 강조
+    - 친근한: 일상적인 표현, 친구에게 이야기하듯 편안한 문체, 이모지 적극 활용
+    
+    또한, 포스팅의 시각적 매력을 높이기 위해 포함해야 할 구체적인 사진이나 시각적 요소 5가지를 제안하는 "이미지 가이드"를 포함해 주세요.
+    
+    응답은 오직 아래 필드를 가진 JSON 객체 형식으로만 보내주세요:
+    - content: 블로그 포스트 전체 텍스트 (마크다운 지원)
+    - imageGuide: 이미지 추천 목록 텍스트
+    
+    형식 예시:
+    {
+      "content": "...",
+      "imageGuide": "..."
+    }
+  `;
+
+    try {
+        const text = await callOpenRouter(prompt);
+        const jsonMatch = text.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            return JSON.parse(jsonMatch[0]);
+        }
+        throw new Error("Failed to parse JSON from OpenRouter response");
+    } catch (error) {
+        console.error("OpenRouter Post Generation Error:", error);
+        return {
+            content: "죄송합니다. 글 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
+            imageGuide: "이미지 가이드를 불러올 수 없습니다.",
+        };
+    }
+}
+
