@@ -15,7 +15,7 @@ export interface TargetPersona {
 export interface GeneratedPost {
     titles: string[];
     content: string;
-    imageGuide: string;
+    hashtags: string[];
 }
 
 async function callOpenRouter(prompt: string) {
@@ -113,16 +113,18 @@ export async function generatePost(productInfo: ProductInfo, target: TargetPerso
     
     **제목 제안**: 해당 타겟과 톤에 어울리는 매력적인 블로그 제목 3개를 제안해 주세요. (리스트의 첫 번째 제목이 가장 추천하는 BEST 제목이어야 합니다.)
     
+    **해시태그 제안**: SNS 및 블로그 검색 유입을 높일 수 있는 관련 해시태그 5~8개를 제안해 주세요.
+    
     응답은 오직 아래 필드를 가진 JSON 객체 형식으로만 보내주세요:
     - titles: 추천 제목 3개가 들어있는 배열 (첫 번째 요소가 Best)
-    - content: [IMAGE: ...] 형식을 포함한 블로그 포스트 전체 텍스트 (마크다운 지원)
-    - imageGuide: 별도의 추천 이미지 목록 (요약본)
+    - content: [IMAGE: ...] 형식을 포함한 블로그 포스트 전체 텍스트 (마크다운 지원). 이미지는 글의 흐름에 따라 3~4개 적절히 배치해 주세요.
+    - hashtags: '#'을 포함한 해시태그 문자열 배열
     
     형식 예시:
     {
       "titles": ["첫 번째 추천 제목 (BEST)", "두 번째 제목", "세 번째 제목"],
       "content": "제목... \\n\\n [IMAGE: 책상 앞에 앉아있는 사람] \\n\\n 내용...",
-      "imageGuide": "..."
+      "hashtags": ["#데스커", "#모션데스크", "#오피스테리어"]
     }
   `;
 
@@ -138,7 +140,7 @@ export async function generatePost(productInfo: ProductInfo, target: TargetPerso
         return {
             titles: ["글 생성 중 오류가 발생했습니다.", "오류 제목 2", "오류 제목 3"],
             content: "죄송합니다. 글 생성 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.",
-            imageGuide: "이미지 가이드를 불러올 수 없습니다.",
+            hashtags: ["#오류발생"],
         };
     }
 }
