@@ -78,3 +78,12 @@ CI=1 npx convex run ...
 - 현재 로컬 상태에서 추적 안 된 생성파일 예시:
   - `convex/_generated/`
 
+
+## 10) 보안 후속 조치(추가 반영)
+- 원격 URL에서 토큰 제거 완료
+  - `origin`: `https://github.com/ssun87kim-pixel/easyblog.git`
+- Windows 자격증명 관리자에서 GitHub 관련 항목 삭제 완료
+  - `LegacyGeneric:target=git:https://github.com`
+  - `LegacyGeneric:target=GitHub - https://api.github.com/ssun87kim-pixel`
+- 남은 수동 작업
+  - GitHub 웹에서 기존 PAT `Revoke` 필요
