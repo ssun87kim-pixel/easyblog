@@ -2,7 +2,7 @@
 
 import { motion } from "framer-motion";
 import { Heart, Loader2, MessageSquare, ShieldCheck, Sparkles, Target } from "lucide-react";
-import { ProductInfo, TargetPersona } from "@/lib/ai";
+import { ContentFormat, ProductInfo, TargetPersona } from "@/lib/ai";
 
 type InputFormProps = {
   productInfo: ProductInfo;
@@ -22,6 +22,8 @@ type InputFormProps = {
   onChangeCustomTargetDescription: (value: string) => void;
   onUseCustomTarget: () => void;
   isCustomSelected: boolean;
+  contentFormat: ContentFormat;
+  onSelectContentFormat: (format: ContentFormat) => void;
 };
 
 const TONE_OPTIONS = [
@@ -48,6 +50,8 @@ export default function InputForm({
   onChangeCustomTargetDescription,
   onUseCustomTarget,
   isCustomSelected,
+  contentFormat,
+  onSelectContentFormat,
 }: InputFormProps) {
   const handleFieldChange = (field: keyof ProductInfo, value: string) => {
     onChange({ ...productInfo, [field]: value });
@@ -65,26 +69,29 @@ export default function InputForm({
         <div className="grid gap-2.5">
           <label className="text-xs font-semibold text-slate-200">
             제품 이름
-            <span className="ml-1 text-[10px] text-rose-300">*</span>
           </label>
           <input
             value={productInfo.name}
             onChange={(e) => handleFieldChange("name", e.target.value)}
-            placeholder="예: 프리미엄 모션데스크 1200"
+            placeholder="예: 프리미엄 모션데스크 1200 (미입력 시 링크 제목 사용)"
             className="h-10 rounded-2xl border border-slate-700/50 bg-slate-900/60 px-3 text-sm text-slate-50 outline-none transition focus:border-indigo-400 focus:bg-slate-900/80 focus:ring-2 focus:ring-indigo-500/20"
           />
         </div>
 
         <div className="grid gap-2.5">
           <label className="text-xs font-semibold text-slate-200">
-            판매 링크 <span className="text-[10px] font-normal text-slate-400 font-normal">(선택)</span>
+            참고 링크(판매 링크)
+            <span className="ml-1 text-[10px] text-rose-300">*</span>
           </label>
           <input
             value={productInfo.link}
             onChange={(e) => handleFieldChange("link", e.target.value)}
-            placeholder="https://..."
+            placeholder="https://... (상품 상세/판매 페이지 URL)"
             className="h-10 rounded-2xl border border-slate-700/50 bg-slate-900/60 px-3 text-xs text-slate-100 outline-none transition focus:border-indigo-400"
           />
+          <p className="text-[10px] leading-relaxed text-slate-500">
+            분석 단계에서 링크를 크롤링해 핵심 정보(제목/설명/본문 요약)를 글 생성에 반영합니다.
+          </p>
         </div>
 
         <div className="grid gap-2.5">
@@ -225,6 +232,38 @@ export default function InputForm({
         </div>
       </div>
 
+      <div className="space-y-3">
+        <div className="flex items-center gap-1.5 text-xs font-semibold text-slate-300">
+          <span className="flex h-4 w-4 items-center justify-center rounded-full bg-sky-500/20 text-[9px] text-sky-300 ring-1 ring-sky-400/30">3</span>
+          <span>초기 생성 형식</span>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <button
+            type="button"
+            onClick={() => onSelectContentFormat("blog")}
+            className={`rounded-2xl border px-3 py-2 text-[11px] font-semibold transition ${contentFormat === "blog"
+              ? "border-sky-400/60 bg-sky-500/15 text-sky-50 shadow-inner"
+              : "border-slate-700/60 bg-slate-900/40 text-slate-400 hover:border-slate-600"
+              }`}
+          >
+            블로그 (기본)
+          </button>
+          <button
+            type="button"
+            onClick={() => onSelectContentFormat("thread")}
+            className={`rounded-2xl border px-3 py-2 text-[11px] font-semibold transition ${contentFormat === "thread"
+              ? "border-sky-400/60 bg-sky-500/15 text-sky-50 shadow-inner"
+              : "border-slate-700/60 bg-slate-900/40 text-slate-400 hover:border-slate-600"
+              }`}
+          >
+            스레드
+          </button>
+        </div>
+        <p className="text-[10px] leading-relaxed text-slate-500">
+          먼저 하나의 형식을 완성한 뒤, 결과 화면에서 다른 형식으로 바로 변환할 수 있습니다.
+        </p>
+      </div>
+
       {/* 5. 최종 글 생성 버튼 */}
       <div className="pt-2">
         <button
@@ -238,11 +277,11 @@ export default function InputForm({
           ) : (
             <Sparkles className="h-4 w-4" />
           )}
-          <span>블로그 포스팅 생성하기</span>
+          <span>{contentFormat === "blog" ? "블로그 포스팅 생성하기" : "스레드 초안 생성하기"}</span>
         </button>
         <p className="mt-3 text-center text-[10px] text-slate-500 leading-normal">
           위 작업을 모두 완료하셨나요? <br />
-          생성하기를 누르면 AI가 제목부터 본문까지 한 번에 완성합니다.
+          생성하기를 누르면 AI가 선택한 형식으로 먼저 완성합니다.
         </p>
       </div>
     </div>

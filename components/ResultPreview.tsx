@@ -1,50 +1,88 @@
 "use client";
 
-import { useCallback, useState, useEffect } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
-import { Copy, Download, FileText, ImageIcon, Loader2, Sparkles, AlertCircle, PencilLine, FileCode, Hash } from "lucide-react";
+import { Copy, Download, FileText, ImageIcon, Loader2, Sparkles, AlertCircle, PencilLine, FileCode, Hash, Repeat2 } from "lucide-react";
 import { GeneratedPost } from "@/lib/ai";
 
 type ResultPreviewProps = {
   productName: string;
   generatedPost: GeneratedPost | null;
   onCopy: (success: boolean) => void;
+  onConvertToThread: () => void;
+  onConvertToBlog: () => void;
+  convertingFormat: boolean;
 };
 
 export default function ResultPreview({
   productName,
   generatedPost,
   onCopy,
+  onConvertToThread,
+  onConvertToBlog,
+  convertingFormat,
 }: ResultPreviewProps) {
   const [generatedImages, setGeneratedImages] = useState<Record<string, string>>({});
   const [loadingImages, setLoadingImages] = useState<Record<string, boolean>>({});
   const [selectedTitle, setSelectedTitle] = useState<string>("");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [previewMode, setPreviewMode] = useState<"blog" | "thread">("blog");
 
   const hasResult = Boolean(generatedPost);
+  const threadPosts = useMemo(
+    () =>
+      (generatedPost?.threads ?? [])
+        .map((item) => item.replace(/^\s*\d+\s*\/\s*\d+\s*/, "").trim())
+        .filter((item) => item.length > 0),
+    [generatedPost?.threads]
+  );
+  const hasBlogContent = Boolean(generatedPost?.content?.trim());
+  const hasThreadContent = threadPosts.length > 0;
+  const canCopyCurrent = previewMode === "thread" ? hasThreadContent : hasBlogContent;
 
   useEffect(() => {
     if (generatedPost?.titles && generatedPost.titles.length > 0) {
       setSelectedTitle(generatedPost.titles[0]);
     }
+    if (generatedPost) {
+      setPreviewMode(generatedPost.primaryFormat);
+      setIsEditingTitle(false);
+    }
   }, [generatedPost]);
 
-  const handleCopy = useCallback(async () => {
+  const getBlogText = useCallback(() => {
     if (!generatedPost?.content) {
+      return "";
+    }
+
+    const hashtagsStr = generatedPost.hashtags?.join(" ") || "";
+    return `[제목]\n${selectedTitle}\n\n${generatedPost.content}\n\n[해시태그]\n${hashtagsStr}`;
+  }, [generatedPost, selectedTitle]);
+
+  const getThreadText = useCallback(() => {
+    if (threadPosts.length === 0) {
+      return "";
+    }
+
+    return threadPosts
+      .map((post, index) => `${index + 1}/${threadPosts.length}\n${post}`)
+      .join("\n\n");
+  }, [threadPosts]);
+
+  const handleCopy = useCallback(async () => {
+    const textToCopy = previewMode === "thread" ? getThreadText() : getBlogText();
+    if (!textToCopy) {
       onCopy(false);
       return;
     }
 
-    const hashtagsStr = generatedPost.hashtags?.join(" ") || "";
-    const fullContent = `[제목]\n${selectedTitle}\n\n${generatedPost.content}\n\n[해시태그]\n${hashtagsStr}`;
-
     try {
-      await navigator.clipboard.writeText(fullContent);
+      await navigator.clipboard.writeText(textToCopy);
       onCopy(true);
     } catch {
       onCopy(false);
     }
-  }, [generatedPost, selectedTitle, onCopy]);
+  }, [getBlogText, getThreadText, onCopy, previewMode]);
 
   const downloadFile = (content: string, fileName: string, mimeType: string) => {
     const blob = new Blob([content], { type: mimeType });
@@ -59,15 +97,16 @@ export default function ResultPreview({
   };
 
   const handleDownloadTxt = () => {
-    if (!generatedPost?.content) return;
-    const hashtagsStr = generatedPost.hashtags?.join(" ") || "";
-    const fullContent = `[제목]\n${selectedTitle}\n\n${generatedPost.content}\n\n[해시태그]\n${hashtagsStr}`;
-    const fileName = (productName || "easyblog-post").replace(/[^\w가-힣-]+/g, "_") + "_blog.txt";
-    downloadFile(fullContent, fileName, "text/plain;charset=utf-8");
+    const textToDownload = previewMode === "thread" ? getThreadText() : getBlogText();
+    if (!textToDownload) return;
+
+    const modeSuffix = previewMode === "thread" ? "_thread.txt" : "_blog.txt";
+    const fileName = (productName || "easyblog-post").replace(/[^\w가-힣-]+/g, "_") + modeSuffix;
+    downloadFile(textToDownload, fileName, "text/plain;charset=utf-8");
   };
 
   const handleDownloadHtml = () => {
-    if (!generatedPost?.content) return;
+    if (previewMode !== "blog" || !generatedPost?.content) return;
 
     const parts = generatedPost.content.split(/(\[IMAGE:.*?\])/g);
     const contentHtml = parts.map((part) => {
@@ -215,6 +254,31 @@ export default function ResultPreview({
     );
   };
 
+  const renderThreads = () => {
+    if (threadPosts.length === 0) {
+      return (
+        <div className="rounded-2xl border border-dashed border-slate-700/70 bg-slate-900/50 px-4 py-6 text-center text-[11px] text-slate-400">
+          스레드 버전을 생성하지 못했습니다.
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-3">
+        {threadPosts.map((post, index) => (
+          <article key={`thread-${index}`} className="rounded-2xl border border-slate-700/50 bg-slate-900/40 p-3">
+            <div className="mb-2 text-[10px] font-semibold text-indigo-300">
+              {index + 1}/{threadPosts.length}
+            </div>
+            <p className="whitespace-pre-wrap text-[11px] leading-6 text-slate-200">
+              {post}
+            </p>
+          </article>
+        ))}
+      </div>
+    );
+  };
+
   return (
     <div className="flex h-full flex-col gap-3">
       <div className="flex items-center justify-between gap-2">
@@ -224,13 +288,36 @@ export default function ResultPreview({
           </div>
           <div className="flex flex-col">
             <span className="text-xs font-semibold text-slate-100">
-              블로그 미리보기
+              콘텐츠 미리보기
             </span>
             <span className="text-[10px] text-slate-400">
-              텍스트 또는 HTML 파일로 저장하세요.
+              블로그와 스레드를 함께 확인하세요.
             </span>
           </div>
         </div>
+      </div>
+
+      <div className="flex items-center justify-center rounded-2xl bg-slate-900/80 p-1 ring-1 ring-white/10">
+        <button
+          type="button"
+          onClick={() => setPreviewMode("blog")}
+          className={`w-1/2 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition ${previewMode === "blog"
+            ? "bg-indigo-500 text-white shadow-lg"
+            : "text-slate-300 hover:bg-slate-800"
+            }`}
+        >
+          블로그
+        </button>
+        <button
+          type="button"
+          onClick={() => setPreviewMode("thread")}
+          className={`w-1/2 rounded-xl px-3 py-1.5 text-[11px] font-semibold transition ${previewMode === "thread"
+            ? "bg-indigo-500 text-white shadow-lg"
+            : "text-slate-300 hover:bg-slate-800"
+            }`}
+        >
+          스레드
+        </button>
       </div>
 
       <div className="flex items-center justify-between rounded-2xl bg-slate-900/80 p-1.5 text-xs text-slate-200 ring-1 ring-white/10">
@@ -238,7 +325,7 @@ export default function ResultPreview({
           <button
             type="button"
             onClick={handleCopy}
-            disabled={!hasResult}
+            disabled={!canCopyCurrent}
             className="inline-flex items-center gap-1 rounded-full bg-slate-100/5 px-2.5 py-1 text-[11px] text-slate-100 ring-1 ring-slate-200/20 transition hover:bg-slate-100/10 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Copy className="h-3.5 w-3.5" />
@@ -249,8 +336,21 @@ export default function ResultPreview({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
+            onClick={previewMode === "blog" ? onConvertToThread : onConvertToBlog}
+            disabled={convertingFormat || (previewMode === "blog" ? !hasBlogContent : !hasThreadContent)}
+            className="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/20 px-2.5 py-1 text-[11px] font-semibold text-emerald-100 ring-1 ring-emerald-300/30 transition hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {convertingFormat ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : (
+              <Repeat2 className="h-3.5 w-3.5" />
+            )}
+            <span>{previewMode === "blog" ? "스레드 변환" : "블로그 변환"}</span>
+          </button>
+          <button
+            type="button"
             onClick={handleDownloadTxt}
-            disabled={!hasResult}
+            disabled={!canCopyCurrent}
             className="inline-flex items-center gap-1.5 rounded-full bg-slate-700/40 px-2.5 py-1 text-[11px] font-medium text-slate-100 ring-1 ring-white/10 transition hover:bg-slate-700/60 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <Download className="h-3.5 w-3.5" />
@@ -259,7 +359,7 @@ export default function ResultPreview({
           <button
             type="button"
             onClick={handleDownloadHtml}
-            disabled={!hasResult}
+            disabled={!hasBlogContent || previewMode === "thread"}
             className="inline-flex items-center gap-1.5 rounded-full bg-indigo-500 px-3 py-1 text-[11px] font-bold text-white shadow-lg transition hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-60"
           >
             <FileCode className="h-3.5 w-3.5" />
@@ -276,63 +376,84 @@ export default function ResultPreview({
         >
           <div className="h-[520px] overflow-y-auto rounded-2xl bg-slate-900/80 px-5 py-6 scrollbar-thin scrollbar-thumb-slate-700">
             {hasResult ? (
-              <div className="space-y-6">
-                <div className="space-y-3 border-b border-slate-700/50 pb-6">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-[11px] font-bold text-indigo-300">최적의 제목 추천</span>
-                    <button
-                      onClick={() => setIsEditingTitle(!isEditingTitle)}
-                      className="text-[10px] text-slate-400 hover:text-slate-200 flex items-center gap-1 transition-colors"
-                    >
-                      <PencilLine className="h-3 w-3" />
-                      직접 수정하기
-                    </button>
-                  </div>
-
-                  {isEditingTitle ? (
-                    <input
-                      value={selectedTitle}
-                      onChange={(e) => setSelectedTitle(e.target.value)}
-                      className="w-full bg-slate-800 border-indigo-500/50 border rounded-xl px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
-                      autoFocus
-                    />
-                  ) : (
-                    <div className="flex flex-col gap-2">
-                      {generatedPost?.titles.map((title, i) => (
+              previewMode === "blog" ? (
+                hasBlogContent ? (
+                  <div className="space-y-6">
+                    <div className="space-y-3 border-b border-slate-700/50 pb-6">
+                      <div className="mb-1 flex items-center justify-between">
+                        <span className="text-[11px] font-bold text-indigo-300">최적의 제목 추천</span>
                         <button
-                          key={i}
-                          onClick={() => setSelectedTitle(title)}
-                          className={`group relative flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${selectedTitle === title
-                              ? "border-indigo-400/60 bg-indigo-500/15 ring-1 ring-indigo-400/30"
-                              : "border-slate-700/40 bg-slate-900/40 hover:border-slate-600 hover:bg-slate-800/40"
-                            }`}
+                          onClick={() => setIsEditingTitle(!isEditingTitle)}
+                          className="flex items-center gap-1 text-[10px] text-slate-400 transition-colors hover:text-slate-200"
                         >
-                          {i === 0 && (
-                            <span className="absolute -top-2 -right-1 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 px-2 py-0.5 text-[8px] font-black text-white shadow-lg ring-1 ring-white/20">
-                              BEST
-                            </span>
-                          )}
-                          <div className={`mt-1 h-3 w-3 flex-shrink-0 rounded-full border-2 transition-all ${selectedTitle === title ? "border-indigo-400 bg-indigo-400 scale-110" : "border-slate-700"
-                            }`} />
-                          <span className="text-[11px] font-semibold leading-relaxed text-slate-200">{title}</span>
+                          <PencilLine className="h-3 w-3" />
+                          직접 수정하기
                         </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
+                      </div>
 
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2 mb-4">
-                    <span className="h-px flex-1 bg-slate-800"></span>
-                    <span className="text-[9px] font-bold text-slate-500 uppercase tracking-tighter">Preview</span>
-                    <span className="h-px flex-1 bg-slate-800"></span>
+                      {isEditingTitle ? (
+                        <input
+                          value={selectedTitle}
+                          onChange={(e) => setSelectedTitle(e.target.value)}
+                          className="w-full rounded-xl border border-indigo-500/50 bg-slate-800 px-3 py-2 text-xs text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
+                          autoFocus
+                        />
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          {generatedPost?.titles.map((title, i) => (
+                            <button
+                              key={i}
+                              onClick={() => setSelectedTitle(title)}
+                              className={`group relative flex items-start gap-3 rounded-xl border p-3 text-left transition-all ${selectedTitle === title
+                                ? "border-indigo-400/60 bg-indigo-500/15 ring-1 ring-indigo-400/30"
+                                : "border-slate-700/40 bg-slate-900/40 hover:border-slate-600 hover:bg-slate-800/40"
+                                }`}
+                            >
+                              {i === 0 && (
+                                <span className="absolute -right-1 -top-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-600 px-2 py-0.5 text-[8px] font-black text-white shadow-lg ring-1 ring-white/20">
+                                  BEST
+                                </span>
+                              )}
+                              <div className={`mt-1 h-3 w-3 flex-shrink-0 rounded-full border-2 transition-all ${selectedTitle === title ? "scale-110 border-indigo-400 bg-indigo-400" : "border-slate-700"
+                                }`} />
+                              <span className="text-[11px] font-semibold leading-relaxed text-slate-200">{title}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="space-y-2">
+                      <div className="mb-4 flex items-center gap-2">
+                        <span className="h-px flex-1 bg-slate-800"></span>
+                        <span className="text-[9px] font-bold uppercase tracking-tighter text-slate-500">Preview</span>
+                        <span className="h-px flex-1 bg-slate-800"></span>
+                      </div>
+                      <h1 className="mb-6 text-base font-extrabold leading-tight tracking-tight text-white">
+                        {selectedTitle}
+                      </h1>
+                      {renderContent()}
+                    </div>
                   </div>
-                  <h1 className="text-base font-extrabold leading-tight text-white mb-6 tracking-tight">
-                    {selectedTitle}
-                  </h1>
-                  {renderContent()}
+                ) : (
+                  <div className="rounded-2xl border border-dashed border-slate-700/70 bg-slate-900/50 px-4 py-10 text-center">
+                    <p className="text-[11px] font-semibold text-slate-200">블로그 본문이 아직 없습니다.</p>
+                    <p className="mt-2 text-[10px] leading-relaxed text-slate-400">
+                      스레드에서 시작했다면 상단의 <span className="text-emerald-300">블로그 변환</span> 버튼을 눌러 주세요.
+                    </p>
+                  </div>
+                )
+              ) : (
+                <div className="space-y-4">
+                  <div className="rounded-2xl border border-slate-700/50 bg-slate-900/40 px-3 py-2">
+                    <span className="text-[11px] font-semibold text-indigo-300">Threads(X) 버전</span>
+                    <p className="mt-1 text-[10px] leading-relaxed text-slate-400">
+                      블로그 내용을 기반으로 바로 올릴 수 있는 짧은 스레드 문안입니다.
+                    </p>
+                  </div>
+                  {renderThreads()}
                 </div>
-              </div>
+              )
             ) : (
               <div className="flex h-full flex-col items-center justify-center gap-4 text-center px-6">
                 <div className="flex h-16 w-16 items-center justify-center rounded-3xl bg-slate-800/50 ring-1 ring-white/5 shadow-inner">
@@ -351,7 +472,7 @@ export default function ResultPreview({
 
           <div className="absolute bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-2 rounded-full bg-slate-800/90 px-4 py-1.5 text-[10px] text-slate-300 border border-white/10 shadow-2xl backdrop-blur-xl ring-1 ring-white/5">
             <AlertCircle className="h-3.5 w-3.5 text-indigo-400" />
-            <span>원하는 포맷 버튼을 클릭하여 즉시 다운로드하세요.</span>
+            <span>블로그/스레드를 전환하고 원하는 포맷으로 바로 저장하세요.</span>
           </div>
         </motion.div>
       </div>

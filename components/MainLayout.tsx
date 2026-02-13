@@ -3,7 +3,17 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { PenLine, Sparkles, Wand2 } from "lucide-react";
-import { ProductInfo, TargetPersona, GeneratedPost, generatePost, generateTargets } from "@/lib/ai";
+import {
+  ContentFormat,
+  ProductInfo,
+  TargetPersona,
+  GeneratedPost,
+  convertBlogToThreads,
+  convertThreadsToBlog,
+  extractLinkContext,
+  generatePost,
+  generateTargets,
+} from "@/lib/ai";
 import InputForm from "@/components/InputForm";
 import ResultPreview from "@/components/ResultPreview";
 
@@ -26,7 +36,8 @@ export default function MainLayout() {
   const [generatedPost, setGeneratedPost] = useState<GeneratedPost | null>(null);
   const [loadingTargets, setLoadingTargets] = useState(false);
   const [loadingPost, setLoadingPost] = useState(false);
-  const [activeTab, setActiveTab] = useState<"content" | "image">("content");
+  const [convertingFormat, setConvertingFormat] = useState(false);
+  const [selectedFormat, setSelectedFormat] = useState<ContentFormat>("blog");
   const [toast, setToast] = useState<ToastState>(null);
 
   const selectedTarget = useMemo(
@@ -60,28 +71,52 @@ export default function MainLayout() {
     }, 2200);
   };
 
+  const handleProductInfoChange = (value: ProductInfo) => {
+    const linkChanged = value.link !== productInfo.link;
+    const nextValue: ProductInfo = linkChanged
+      ? { ...value, referenceContext: "", referenceTitle: "" }
+      : value;
+
+    setProductInfo(nextValue);
+
+    if (linkChanged) {
+      setTargets([]);
+      setSelectedTargetId(null);
+      setGeneratedPost(null);
+    }
+  };
+
   const handleAnalyzeTargets = async () => {
-    const hasName = productInfo.name.trim().length > 0;
-    const hasDescription = productInfo.description.trim().length > 0;
     const hasLink = productInfo.link.trim().length > 0;
 
-    if (!hasName || (!hasDescription && !hasLink)) {
-      showToast("상품명과 링크 또는 설명 중 하나를 입력해 주세요.", "error");
+    if (!hasLink) {
+      showToast("판매 링크(참고 링크)는 필수입니다.", "error");
       return;
     }
 
     try {
       setLoadingTargets(true);
       setGeneratedPost(null);
-      const personas = await generateTargets(productInfo);
+      const linkData = await extractLinkContext(productInfo.link);
+      const enrichedInfo: ProductInfo = {
+        ...productInfo,
+        name: productInfo.name.trim() ? productInfo.name : linkData.title || productInfo.name,
+        referenceTitle: linkData.title,
+        referenceContext: linkData.context,
+      };
+
+      setProductInfo(enrichedInfo);
+
+      const personas = await generateTargets(enrichedInfo);
       setTargets(personas);
       if (personas.length > 0) {
         setSelectedTargetId(personas[0].id);
         setSelectedTone(personas[0].recommendedTone);
       }
-      showToast("타겟 페르소나를 분석했어요.");
-    } catch {
-      showToast("타겟 분석 중 오류가 발생했어요.", "error");
+      showToast("링크 정보를 반영해 타겟을 분석했어요.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "타겟 분석 중 오류가 발생했어요.";
+      showToast(message, "error");
     } finally {
       setLoadingTargets(false);
     }
@@ -96,16 +131,26 @@ export default function MainLayout() {
   };
 
   const handleUseCustomTarget = () => {
-    if (!customTargetTitle.trim()) {
+    setSelectedTargetId("custom");
+    showToast("직접 타겟 입력 모드로 전환했어요.");
+  };
+
+  const handleGeneratePost = async () => {
+    if (!productInfo.link.trim()) {
+      showToast("판매 링크(참고 링크)는 필수입니다.", "error");
+      return;
+    }
+
+    if (!productInfo.referenceContext?.trim()) {
+      showToast("먼저 타겟 분석을 실행해 링크 정보를 반영해 주세요.", "error");
+      return;
+    }
+
+    if (selectedTargetId === "custom" && !customTargetTitle.trim()) {
       showToast("직접 타겟의 이름을 입력해 주세요.", "error");
       return;
     }
 
-    setSelectedTargetId("custom");
-    showToast("직접 입력한 타겟을 사용합니다.");
-  };
-
-  const handleGeneratePost = async () => {
     if (!selectedTarget) {
       showToast("먼저 타겟을 선택해 주세요.", "error");
       return;
@@ -113,14 +158,65 @@ export default function MainLayout() {
 
     try {
       setLoadingPost(true);
-      const result = await generatePost(productInfo, selectedTarget, selectedTone);
+      const result = await generatePost(productInfo, selectedTarget, selectedTone, selectedFormat);
       setGeneratedPost(result);
-      setActiveTab("content");
-      showToast("블로그 글이 생성되었어요.");
+      showToast(selectedFormat === "blog" ? "블로그 글이 생성되었어요." : "스레드가 생성되었어요.");
     } catch {
       showToast("글 생성 중 오류가 발생했어요.", "error");
     } finally {
       setLoadingPost(false);
+    }
+  };
+
+  const handleConvertToThread = async () => {
+    if (!generatedPost?.content.trim()) {
+      showToast("먼저 블로그 본문을 생성해 주세요.", "error");
+      return;
+    }
+
+    try {
+      setConvertingFormat(true);
+      const threads = await convertBlogToThreads(generatedPost, selectedTone);
+      setGeneratedPost((prev) =>
+        prev
+          ? {
+            ...prev,
+            threads,
+            primaryFormat: "thread",
+          }
+          : prev
+      );
+      showToast("스레드 버전으로 변환했어요.");
+    } catch {
+      showToast("스레드 변환 중 오류가 발생했어요.", "error");
+    } finally {
+      setConvertingFormat(false);
+    }
+  };
+
+  const handleConvertToBlog = async () => {
+    if (!generatedPost?.threads || generatedPost.threads.length === 0) {
+      showToast("먼저 스레드를 생성해 주세요.", "error");
+      return;
+    }
+
+    try {
+      setConvertingFormat(true);
+      const blog = await convertThreadsToBlog(generatedPost.threads, selectedTone);
+      setGeneratedPost((prev) =>
+        prev
+          ? {
+            ...prev,
+            ...blog,
+            primaryFormat: "blog",
+          }
+          : prev
+      );
+      showToast("블로그 버전으로 변환했어요.");
+    } catch {
+      showToast("블로그 변환 중 오류가 발생했어요.", "error");
+    } finally {
+      setConvertingFormat(false);
     }
   };
 
@@ -182,7 +278,7 @@ export default function MainLayout() {
             </div>
             <InputForm
               productInfo={productInfo}
-              onChange={setProductInfo}
+              onChange={handleProductInfoChange}
               onAnalyzeTargets={handleAnalyzeTargets}
               onGeneratePost={handleGeneratePost}
               targets={targets}
@@ -198,6 +294,8 @@ export default function MainLayout() {
               onChangeCustomTargetDescription={setCustomTargetDescription}
               onUseCustomTarget={handleUseCustomTarget}
               isCustomSelected={selectedTargetId === "custom"}
+              contentFormat={selectedFormat}
+              onSelectContentFormat={setSelectedFormat}
             />
 
           </motion.section>
@@ -217,6 +315,9 @@ export default function MainLayout() {
                   success ? "success" : "error"
                 )
               }
+              onConvertToThread={handleConvertToThread}
+              onConvertToBlog={handleConvertToBlog}
+              convertingFormat={convertingFormat}
             />
 
           </motion.section>
