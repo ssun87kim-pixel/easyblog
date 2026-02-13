@@ -3,6 +3,8 @@
 import { useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { PenLine, Sparkles, Wand2 } from "lucide-react";
+import { useMutation } from "convex/react";
+import { makeFunctionReference } from "convex/server";
 import {
   ContentFormat,
   ProductInfo,
@@ -22,6 +24,11 @@ type ToastState = {
   type: "success" | "error";
 } | null;
 
+type SaveSourceAction =
+  | "generate"
+  | "convert_blog_to_thread"
+  | "convert_thread_to_blog";
+
 export default function MainLayout() {
   const [productInfo, setProductInfo] = useState<ProductInfo>({
     name: "",
@@ -39,6 +46,9 @@ export default function MainLayout() {
   const [convertingFormat, setConvertingFormat] = useState(false);
   const [selectedFormat, setSelectedFormat] = useState<ContentFormat>("blog");
   const [toast, setToast] = useState<ToastState>(null);
+  const saveGeneratedContent = useMutation(
+    makeFunctionReference<"mutation">("contentLogs:saveGeneratedContent")
+  );
 
   const selectedTarget = useMemo(
     () => {
@@ -69,6 +79,34 @@ export default function MainLayout() {
     setTimeout(() => {
       setToast(null);
     }, 2200);
+  };
+
+  const persistGeneratedContent = async (
+    post: GeneratedPost,
+    sourceAction: SaveSourceAction
+  ) => {
+    if (!productInfo.link.trim()) return;
+
+    try {
+      await saveGeneratedContent({
+        sourceAction,
+        sourceFormat: post.primaryFormat,
+        productName: productInfo.name.trim() || "(미입력)",
+        productLink: productInfo.link.trim(),
+        referenceTitle: productInfo.referenceTitle?.trim() || undefined,
+        referenceContext: productInfo.referenceContext?.trim() || undefined,
+        targetTitle: selectedTarget?.title || undefined,
+        targetDescription: selectedTarget?.description || undefined,
+        tone: selectedTone,
+        titles: post.titles,
+        content: post.content,
+        hashtags: post.hashtags,
+        threads: post.threads,
+      });
+    } catch (error) {
+      console.error("Convex save failed:", error);
+      showToast("콘텐츠 저장 중 오류가 발생했어요.", "error");
+    }
   };
 
   const handleProductInfoChange = (value: ProductInfo) => {
@@ -160,6 +198,7 @@ export default function MainLayout() {
       setLoadingPost(true);
       const result = await generatePost(productInfo, selectedTarget, selectedTone, selectedFormat);
       setGeneratedPost(result);
+      await persistGeneratedContent(result, "generate");
       showToast(selectedFormat === "blog" ? "블로그 글이 생성되었어요." : "스레드가 생성되었어요.");
     } catch {
       showToast("글 생성 중 오류가 발생했어요.", "error");
@@ -177,6 +216,11 @@ export default function MainLayout() {
     try {
       setConvertingFormat(true);
       const threads = await convertBlogToThreads(generatedPost, selectedTone);
+      const mergedPost: GeneratedPost = {
+        ...generatedPost,
+        threads,
+        primaryFormat: "thread",
+      };
       setGeneratedPost((prev) =>
         prev
           ? {
@@ -186,6 +230,7 @@ export default function MainLayout() {
           }
           : prev
       );
+      await persistGeneratedContent(mergedPost, "convert_blog_to_thread");
       showToast("스레드 버전으로 변환했어요.");
     } catch {
       showToast("스레드 변환 중 오류가 발생했어요.", "error");
@@ -203,6 +248,11 @@ export default function MainLayout() {
     try {
       setConvertingFormat(true);
       const blog = await convertThreadsToBlog(generatedPost.threads, selectedTone);
+      const mergedPost: GeneratedPost = {
+        ...generatedPost,
+        ...blog,
+        primaryFormat: "blog",
+      };
       setGeneratedPost((prev) =>
         prev
           ? {
@@ -212,6 +262,7 @@ export default function MainLayout() {
           }
           : prev
       );
+      await persistGeneratedContent(mergedPost, "convert_thread_to_blog");
       showToast("블로그 버전으로 변환했어요.");
     } catch {
       showToast("블로그 변환 중 오류가 발생했어요.", "error");
